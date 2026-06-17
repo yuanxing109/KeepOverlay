@@ -28,19 +28,6 @@ class MainHook : IXposedHookLoadPackage {
             WindowManager.LayoutParams::class.java
         )
 
-        // Hook 所有 LayoutParams 构造器，防止在创建时直接填入标志
-        try {
-            XposedHelpers.hookAllConstructors(
-                WindowManager.LayoutParams::class.java,
-                object : XC_MethodHook() {
-                    override fun afterHookedMethod(param: MethodHookParam) {
-                        stripFlags(param.thisObject)
-                    }
-                })
-        } catch (e: Exception) {
-            log("hookAllConstructors 失败: ${e.message}")
-        }
-
         // Hook WindowManager.addView (拦截直接添加的窗口)
         try {
             XposedHelpers.findAndHookMethod(
@@ -89,7 +76,7 @@ class MainHook : IXposedHookLoadPackage {
                 *paramTypes,
                 object : XC_MethodHook() {
                     override fun beforeHookedMethod(param: MethodHookParam) {
-                        val flagsIndex = if (methodName == "clearFlags") 0 else 0
+                        val flagsIndex = 0
                         if (param.args.isNotEmpty() && param.args[flagsIndex] is Int) {
                             var flags = param.args[flagsIndex] as Int
                             if (flags and FLAG_SECURE != 0) {
@@ -120,9 +107,7 @@ class MainHook : IXposedHookLoadPackage {
                 privateFlagsField.setInt(obj, privateFlags)
                 log("已清除 HIDE_NON_SYSTEM_OVERLAY_WINDOWS")
             }
-        } catch (e: Exception) {
-            // 该对象可能没有 privateFlags 字段
-        }
+        } catch (_: Exception) {}
 
         // 清除 flags 中的 SECURE
         try {
@@ -133,9 +118,7 @@ class MainHook : IXposedHookLoadPackage {
                 flagsField.setInt(obj, flags)
                 log("已清除 FLAG_SECURE")
             }
-        } catch (e: Exception) {
-            // 忽略
-        }
+        } catch (_: Exception) {}
     }
 
     private fun log(msg: String) {
