@@ -1,0 +1,6 @@
+<resources>
+    <string-array name="xposed_scope">
+        <!-- 仅作用于目标应用 -->
+        <item>cn.ulearning.yxy</item>
+    </string-array>
+</resources>

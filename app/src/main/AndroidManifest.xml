@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application
+        android:allowBackup="true"
+        android:label="KeepOverlay"
+        android:supportsRtl="true"
+        tools:ignore="MissingApplicationIcon">
+
+        <!-- LSPosed 模块声明 -->
+        <meta-data
+            android:name="xposedmodule"
+            android:value="true" />
+        <meta-data
+            android:name="xposeddescription"
+            android:value="悬浮窗守护 - 阻止优学院页面强制隐藏悬浮窗" />
+        <meta-data
+            android:name="xposedminversion"
+            android:value="82" />
+        <!-- 作用域推荐 -->
+        <meta-data
+            android:name="xposedscope"
+            android:resource="@array/xposed_scope" />
+    </application>
+</manifest>
