@@ -21,15 +21,27 @@ class MainHook : IXposedHookLoadPackage {
         if (lpparam.packageName != TARGET_PACKAGE) return
         log("模块已挂载")
 
-        // 1. Hook Window.setAttributes (已有)
-        hookMethod(android.view.Window::class.java, "setAttributes", WindowManager.LayoutParams::class.java)
+        // Hook Window.setAttributes
+        hookMethod(
+            android.view.Window::class.java,
+            "setAttributes",
+            WindowManager.LayoutParams::class.java
+        )
 
-        // 2. Hook WindowManager.LayoutParams 的所有构造函数
-        //    很多 App 直接 new LayoutParams() 并填入标志
-        hookAllConstructors(WindowManager.LayoutParams::class.java)
+        // Hook 所有 LayoutParams 构造器，防止在创建时直接填入标志
+        try {
+            XposedHelpers.hookAllConstructors(
+                WindowManager.LayoutParams::class.java,
+                object : XC_MethodHook() {
+                    override fun afterHookedMethod(param: MethodHookParam) {
+                        stripFlags(param.thisObject)
+                    }
+                })
+        } catch (e: Exception) {
+            log("hookAllConstructors 失败: ${e.message}")
+        }
 
-        // 3. Hook WindowManager.addView (三个参数版本)
-        //    有些 App 不调 setAttributes，而是直接 addView 传递 LayoutParams
+        // Hook WindowManager.addView (拦截直接添加的窗口)
         try {
             XposedHelpers.findAndHookMethod(
                 android.view.WindowManager::class.java,
@@ -47,12 +59,12 @@ class MainHook : IXposedHookLoadPackage {
             log("addView Hook 失败: ${e.message}")
         }
 
-        // 4. Hook Window.setFlags / addFlags / clearFlags (预防 FLAG_SECURE)
+        // Hook Window.setFlags/addFlags/clearFlags 移除 FLAG_SECURE
         hookWindowFlagMethod("setFlags", Int::class.java, Int::class.java)
         hookWindowFlagMethod("addFlags", Int::class.java)
         hookWindowFlagMethod("clearFlags", Int::class.java)
 
-        log("Hook 安装完成")
+        log("所有 Hook 安装完成")
     }
 
     private fun hookMethod(clazz: Class<*>, methodName: String, vararg paramTypes: Class<*>) {
@@ -66,18 +78,6 @@ class MainHook : IXposedHookLoadPackage {
             })
         } catch (e: Exception) {
             log("Hook $methodName 失败: ${e.message}")
-        }
-    }
-
-    private fun hookAllConstructors(clazz: Class<*>) {
-        try {
-            XposedBridge.hookAllConstructors(clazz, object : XC_MethodHook() {
-                override fun afterHookedMethod(param: MethodHookParam) {
-                    stripFlags(param.thisObject)
-                }
-            })
-        } catch (e: Exception) {
-            log("Hook 构造器失败: ${e.message}")
         }
     }
 
@@ -106,43 +106,36 @@ class MainHook : IXposedHookLoadPackage {
     }
 
     /**
-     * 清除 LayoutParams 对象中的 SECURE 和 HIDE_NON_SYSTEM_OVERLAY_WINDOWS 标志
+     * 通过反射清除 LayoutParams 对象中的 SECURE 和 HIDE_NON_SYSTEM_OVERLAY_WINDOWS 标志
      */
     private fun stripFlags(obj: Any?) {
         if (obj == null) return
-        try {
-            // 检查并清除 privateFlags
-            if (obj is WindowManager.LayoutParams) {
-                if (obj.privateFlags and PRIVATE_FLAG_HIDE != 0) {
-                    obj.privateFlags = obj.privateFlags and PRIVATE_FLAG_HIDE.inv()
-                    log("已清除 HIDE_NON_SYSTEM_OVERLAY_WINDOWS")
-                }
-            } else {
-                // 对于 ViewGroup.LayoutParams 非子类，尝试反射 privateFlags
-                val flagsField = obj.javaClass.getField("privateFlags")
-                if (flagsField != null) {
-                    var flags = flagsField.getInt(obj)
-                    if (flags and PRIVATE_FLAG_HIDE != 0) {
-                        flags = flags and PRIVATE_FLAG_HIDE.inv()
-                        flagsField.setInt(obj, flags)
-                        log("已清除 privateFlags")
-                    }
-                }
-            }
-        } catch (_: Exception) {}
 
+        // 清除 privateFlags 中的 HIDE_NON_SYSTEM_OVERLAY_WINDOWS
         try {
-            // 清除 flags 中的 SECURE
-            val flagsField = obj.javaClass.getField("flags")
-            if (flagsField != null) {
-                var flags = flagsField.getInt(obj)
-                if (flags and FLAG_SECURE != 0) {
-                    flags = flags and FLAG_SECURE.inv()
-                    flagsField.setInt(obj, flags)
-                    log("已清除 FLAG_SECURE")
-                }
+            val privateFlagsField = obj.javaClass.getField("privateFlags")
+            var privateFlags = privateFlagsField.getInt(obj)
+            if (privateFlags and PRIVATE_FLAG_HIDE != 0) {
+                privateFlags = privateFlags and PRIVATE_FLAG_HIDE.inv()
+                privateFlagsField.setInt(obj, privateFlags)
+                log("已清除 HIDE_NON_SYSTEM_OVERLAY_WINDOWS")
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            // 该对象可能没有 privateFlags 字段
+        }
+
+        // 清除 flags 中的 SECURE
+        try {
+            val flagsField = obj.javaClass.getField("flags")
+            var flags = flagsField.getInt(obj)
+            if (flags and FLAG_SECURE != 0) {
+                flags = flags and FLAG_SECURE.inv()
+                flagsField.setInt(obj, flags)
+                log("已清除 FLAG_SECURE")
+            }
+        } catch (e: Exception) {
+            // 忽略
+        }
     }
 
     private fun log(msg: String) {
